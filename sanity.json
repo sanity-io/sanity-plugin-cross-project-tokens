@@ -2,7 +2,7 @@
   "parts": [
     {
       "implements": "part:@sanity/base/tool",
-      "path": "./dist/tool.js"
+      "path": "./dist/cjs/tool.js"
     }
   ]
 }
