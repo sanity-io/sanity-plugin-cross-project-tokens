@@ -1,12 +1,23 @@
-import React from "react"
+import React, {useCallback, useMemo} from "react"
 import ReactDOM from "react-dom"
-import {ThemeProvider, studioTheme} from "@sanity/ui"
+import {
+  Button,
+  studioTheme,
+  ThemeProvider,
+  ToastProvider,
+  useToast,
+} from "@sanity/ui"
 import {CrossDatasetTokenRoot} from "./src"
-import {RouterProvider, route} from "@sanity/base/router"
+import {RouterProvider, useRouterState} from "@sanity/base/router"
 import createClient from "@sanity/client"
 import {validateRouterState} from "./src/utils/validateRouterState"
+import {router} from "./src/router"
 
-const client = createClient({projectId: "ppsg7ml5", dataset: "test", withCredentials: true})
+const client = createClient({
+  projectId: "ppsg7ml5",
+  dataset: "playground",
+  withCredentials: true,
+})
 
 function navigate(path: string) {
   window.location.hash = path
@@ -16,30 +27,50 @@ function navigateState(nextState: Record<string, any>) {
   navigate(router.encode(nextState))
 }
 
-function notify(notification: {title: string; status: "success" | "info"}) {
-  alert(notification.title)
+function DemoProvider(props: {children: React.ReactNode}) {
+  const state = router.decode(document.location.hash.substring(1))
+  return (
+    <ThemeProvider theme={studioTheme}>
+      <ToastProvider>
+        <RouterProvider
+          router={router}
+          state={state || {}}
+          onNavigate={navigate}
+        >
+          {props.children}
+        </RouterProvider>
+      </ToastProvider>
+    </ThemeProvider>
+  )
 }
-const router = route("/:action", ({action}) =>
-  action === "edit"
-    ? [route(":projectId/:dataset/:tokenId"), route(":projectId/:dataset")]
-    : [],
-)
+
+function Demo() {
+  const toast = useToast()
+  const routerState = useRouterState()
+
+  const notify = useCallback(
+    (notification: {title: string; status: "success" | "info"}) => {
+      return toast.push(notification)
+    },
+    [toast],
+  )
+
+  return (
+    <CrossDatasetTokenRoot
+      client={client}
+      navigate={navigateState}
+      notify={notify}
+      params={routerState ? validateRouterState(routerState) : null}
+    />
+  )
+}
 
 function render() {
-  const state = router.decode(document.location.hash.substring(1))
-  console.log('render')
   ReactDOM.render(
     <React.StrictMode>
-      <RouterProvider router={router} state={state || {}} onNavigate={navigate}>
-        <ThemeProvider theme={studioTheme}>
-          <CrossDatasetTokenRoot
-            client={client}
-            navigate={navigateState}
-            notify={notify}
-            params={state ? validateRouterState(state) : null}
-          />
-        </ThemeProvider>
-      </RouterProvider>
+      <DemoProvider>
+        <Demo />
+      </DemoProvider>
     </React.StrictMode>,
     document.getElementById("root"),
   )

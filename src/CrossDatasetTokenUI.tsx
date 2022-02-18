@@ -1,4 +1,4 @@
-import React, {useCallback, useMemo, useState} from "react"
+import React, {useCallback, useRef, useState} from "react"
 import {
   Box,
   Button,
@@ -9,9 +9,10 @@ import {
   Spinner,
   Stack,
   Text,
+  ToastParams,
 } from "@sanity/ui"
 import {StateLink} from "@sanity/base/router"
-import {AddIcon, CloseIcon} from "@sanity/icons"
+import {AddIcon, CloseIcon, PlayIcon} from "@sanity/icons"
 
 import {SanityClient} from "@sanity/client"
 import {usePromise} from "./utils/usePromise"
@@ -20,42 +21,28 @@ import {
   deleteToken,
   fetchTokenDocument,
   getAllTokens,
-  getTokenDocumentId,
   saveToken,
+  TokenDocumentAttributes,
 } from "./data"
-
-function parseTokenDocumentId(id: string): {
-  projectId: string
-  dataset: string
-  tokenId?: string
-} {
-  if (!id.startsWith("secrets.sanity.sharedContent")) {
-    throw new Error(
-      "Unexpected document id. The _id of cross dataset token documents should begin with `secrets.sanity.sharedContent`",
-    )
-  }
-  const [, , , projectId, dataset, tokenId] = id.split(".")
-  return {projectId: projectId!, dataset: dataset!, tokenId}
-}
+import {fromDocumentId, parse, stringify, toDocumentId} from "./utils/TokenId"
 
 function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+interface FormValues extends TokenDocumentAttributes {
+  projectId: string
+  tokenId?: string
 }
 
 function validateFormData(formData: Record<string, FormDataEntryValue>):
   | {valid: false; errors: string[]}
   | {
       valid: true
-      values: {
-        dataset: string
-        projectId: string
-        tokenId?: string
-        token: string
-      }
+      values: FormValues
     } {
-  const {dataset, projectId, tokenId, token} = formData
+  const {projectId, tokenId, token, displayName, comment} = formData
   if (
-    typeof dataset !== "string" ||
     typeof projectId !== "string" ||
     typeof token !== "string" ||
     typeof tokenId !== "string"
@@ -65,9 +52,10 @@ function validateFormData(formData: Record<string, FormDataEntryValue>):
   return {
     valid: true,
     values: {
-      dataset,
       projectId,
       token,
+      displayName: displayName as string,
+      comment: comment as string,
       tokenId: tokenId === "" ? undefined : tokenId,
     },
   }
@@ -75,12 +63,14 @@ function validateFormData(formData: Record<string, FormDataEntryValue>):
 
 interface ToolProps {
   client: SanityClient
-  navigate: (nextState: Record<string, unknown>) => void
-  notify: (notification: {title: string; status: "success" | "info"}) => void
-  params:
-    | null
-    | {action: "edit"; dataset: string; projectId: string; tokenId?: string}
-    | {action: "new"}
+  navigate: (
+    nextState:
+      | {action: "edit"; tokenId: string}
+      | {action: "new"}
+      | {action: ""},
+  ) => void
+  notify: (notification: ToastParams) => void
+  params: null | {action: "edit"; tokenId: string} | {action: "new"}
 }
 
 export function CrossDatasetTokenRoot(props: ToolProps) {
@@ -95,39 +85,21 @@ export function CrossDatasetTokenUI(props: ToolProps) {
   const {client, navigate, notify, params} = props
 
   const [refreshCount, setRefreshCount] = useState(0)
+  const formRef = useRef<HTMLFormElement | null>(null)
 
-  const tokenDocumentId = useMemo(() => {
-    if (params === null || params.action === "new") {
-      return null
-    }
-    return getTokenDocumentId({
-      projectId: params.projectId,
-      dataset: params.dataset,
-      tokenId: params.tokenId,
-    })
-  }, [params])
+  const token = params?.action === "edit" ? parse(params.tokenId) : null
 
-  const loadToken = useCallback(
-    (): Promise<null | {
-      token: string
-      dataset: string
-      projectId: string
-      tokenId?: string
-    }> =>
+  const tokenDocumentId = token ? toDocumentId(token) : null
+
+  const loadTokenDocument = useCallback(
+    () =>
       tokenDocumentId
-        ? fetchTokenDocument(client, tokenDocumentId).then(token => {
-            if (!token) {
-              return token
-            }
-            return {
-              ...parseTokenDocumentId(token._id),
-              token: token.token,
-            }
-          })
+        ? fetchTokenDocument(client, tokenDocumentId)
         : Promise.resolve(null),
     [client, tokenDocumentId],
   )
-  const tokenDocumentPromise = usePromise(loadToken)
+
+  const tokenDocumentPromise = usePromise(loadTokenDocument)
 
   const allTokensPromise = usePromise(
     useCallback(() => getAllTokens(client), [refreshCount]),
@@ -144,19 +116,22 @@ export function CrossDatasetTokenUI(props: ToolProps) {
         // this should really not happen because of native form validation
         return
       }
+
       setSyncState("saving")
-      await saveToken(client, formInput.values)
+      const {projectId, tokenId, ...attributes} = formInput.values
+      await saveToken(client, toDocumentId({projectId, tokenId}), attributes)
       await delay(1000)
       setSyncState(null)
       setRefreshCount(c => c + 1)
-      navigate({
-        action: "edit",
-        dataset: formInput.values.dataset,
-        projectId: formInput.values.projectId,
-        tokenId: formInput.values.tokenId,
-      })
       notify({title: "Token saved", status: "success"})
       setSyncState(null)
+      navigate({
+        action: "edit",
+        tokenId: stringify({
+          projectId: formInput.values.projectId,
+          tokenId: formInput.values.tokenId,
+        }),
+      })
     },
     [client, navigate, notify],
   )
@@ -170,30 +145,76 @@ export function CrossDatasetTokenUI(props: ToolProps) {
         await delay(1000)
         setRefreshCount(c => c + 1)
         setSyncState(null)
-        navigate({action: ""})
         notify({title: "Token deleted", status: "info"})
+        navigate({action: ""})
       }
     },
     [client, navigate, notify],
   )
 
-  if (allTokensPromise.type === "loading") {
-    return <Box padding={2}>Loading…</Box>
-  }
+  const handleValidate = useCallback(async () => {
+    if (!formRef.current) {
+      throw new Error("Missing formRef")
+    }
+    const formValues = Object.fromEntries(new FormData(formRef.current))
+    const {projectId, token} = formValues
 
-  if (allTokensPromise.type === "error") {
-    return (
-      <Card padding={2} tone="critical">
-        Fetch tokens failed: {allTokensPromise.error.message}
-      </Card>
-    )
-  }
+    if (!projectId || typeof projectId !== "string") {
+      alert("No projectId given")
+      return
+    }
+    if (!token || typeof token !== "string") {
+      alert("No token given")
+      return
+    }
+    notify({
+      id: "token-validation",
+      title: "Validating token…",
+      status: "info",
+    })
+
+    // assumption: it doesn't really matter what project api you request with the `sanity-project-tokens`
+    // it will be validated no matter what
+    client
+      .request({
+        url: `/datasets`,
+        method: "HEAD",
+        headers: {"sanity-project-tokens": `${projectId}=${token}`},
+      })
+      .then(
+        res => {
+          notify({
+            id: "token-validation",
+            title: "Token is valid!",
+            status: "success",
+          })
+        },
+        err => {
+          notify({
+            id: "token-validation",
+            title: "Token is invalid!",
+            closable: true,
+            duration: 100000,
+            description: (
+              <>
+                You can generate a new token for project {projectId} at{" "}
+                <a href="https://www.sanity.io/manage">
+                  https://www.sanity.io/manage
+                </a>
+              </>
+            ),
+            status: "error",
+          })
+        },
+      )
+  }, [client, navigate, notify])
 
   return (
     <Stack>
       <Box paddingX={3} paddingY={4}>
         <Heading as="h1">Cross dataset tokens</Heading>
       </Box>
+
       <Flex padding={2} gap={2}>
         <Card shadow={2} radius={2} padding={1}>
           <Card padding={2} borderBottom>
@@ -216,33 +237,48 @@ export function CrossDatasetTokenUI(props: ToolProps) {
             </Flex>
           </Card>
           <Stack space={3} marginY={2}>
-            {allTokensPromise.result.map(token => {
-              const {dataset, projectId, tokenId} = parseTokenDocumentId(
-                token._id,
-              )
-              return (
-                <Card
-                  as={StateLink}
-                  // @ts-ignore
-                  state={{action: "edit", dataset, projectId, tokenId}}
-                  data-as="a"
-                  selected={tokenDocumentId === token._id}
-                  padding={2}
-                  marginX={1}
-                  radius={2}
-                  key={token._id}
-                  style={{textDecoration: "none"}}
-                >
-                  <Stack space={2}>
-                    <Text weight="bold">{tokenId || "Dataset default"}</Text>
-                    <Inline space={2}>
-                      <Text size={1}>ProjectId: {projectId}</Text>
-                      <Text size={1}>Dataset: {dataset}</Text>
-                    </Inline>
-                  </Stack>
-                </Card>
-              )
-            })}
+            {allTokensPromise.type === "loading" && (
+              <Box padding={2}>
+                <Text muted>Loading…</Text>
+              </Box>
+            )}
+            {allTokensPromise.type === "error" && (
+              <Card padding={2} tone="critical">
+                <Text>
+                  Fetch tokens failed: {allTokensPromise.error.message}
+                </Text>
+              </Card>
+            )}
+
+            {allTokensPromise.type === "ok" &&
+              allTokensPromise.result.map(tokenDocument => {
+                const token = fromDocumentId(tokenDocument._id)
+                return (
+                  <Card
+                    as={StateLink}
+                    // @ts-ignore
+                    state={{action: "edit", tokenId: stringify(token)}}
+                    data-as="a"
+                    selected={tokenDocumentId === tokenDocument._id}
+                    padding={2}
+                    marginX={1}
+                    radius={2}
+                    key={tokenDocument._id}
+                    style={{textDecoration: "none"}}
+                  >
+                    <Stack space={2}>
+                      <Text weight="bold">
+                        {tokenDocument.displayName || (
+                          <>Token for {token.projectId}</>
+                        )}
+                      </Text>
+                      <Inline space={2}>
+                        <Text size={1}>ProjectId: {token.projectId}</Text>
+                      </Inline>
+                    </Stack>
+                  </Card>
+                )
+              })}
           </Stack>
         </Card>
         {params?.action && (
@@ -266,61 +302,76 @@ export function CrossDatasetTokenUI(props: ToolProps) {
                   />
                 </Box>
               </Flex>
-              {tokenDocumentPromise.type === "loading" && <Box>Loading…</Box>}
+              {tokenDocumentPromise.type === "loading" && (
+                <Box>
+                  <Text muted>Loading…</Text>
+                </Box>
+              )}
               {tokenDocumentPromise.type === "error" && (
-                <Box>Error: {tokenDocumentPromise.error.message}</Box>
+                <Box>
+                  <Text>Error: {tokenDocumentPromise.error.message}</Text>
+                </Box>
               )}
               {params?.action === "edit" &&
+                token &&
                 tokenDocumentPromise.type === "ok" &&
                 (tokenDocumentPromise.result ? (
-                  <form onSubmit={handleSave}>
+                  <form onSubmit={handleSave} ref={formRef}>
                     <Stack space={4}>
                       <TokenForm
                         action="edit"
-                        token={tokenDocumentPromise.result.token}
-                        dataset={tokenDocumentPromise.result.dataset}
-                        tokenId={tokenDocumentPromise.result.tokenId}
-                        projectId={tokenDocumentPromise.result.projectId}
+                        token={token}
+                        tokenDocument={tokenDocumentPromise.result}
                       />
-                      <Inline space={3}>
+                      <Flex>
+                        <Inline flex={1} space={3}>
+                          <Button
+                            type="submit"
+                            text="Save"
+                            tone="primary"
+                            disabled={Boolean(syncState)}
+                          />
+                          <Button
+                            text="Delete"
+                            type="button"
+                            mode="bleed"
+                            tone="critical"
+                            disabled={Boolean(syncState)}
+                            onClick={
+                              tokenDocumentId
+                                ? () => handleDelete(tokenDocumentId)
+                                : undefined
+                            }
+                          />
+                          {syncState && (
+                            <Inline space={2}>
+                              <Spinner muted />
+                              <Text size={1} muted>
+                                {syncState === "deleting" ? (
+                                  <>Deleting…</>
+                                ) : (
+                                  <>Saving…</>
+                                )}
+                              </Text>
+                            </Inline>
+                          )}
+                        </Inline>
+
                         <Button
-                          type="submit"
-                          text="Save"
-                          tone="primary"
-                          disabled={Boolean(syncState)}
-                        />
-                        <Button
-                          text="Delete"
                           type="button"
-                          mode="bleed"
-                          tone="critical"
-                          disabled={Boolean(syncState)}
-                          onClick={
-                            tokenDocumentId
-                              ? () => handleDelete(tokenDocumentId)
-                              : undefined
-                          }
+                          mode="ghost"
+                          text="Validate token"
+                          icon={PlayIcon}
+                          onClick={handleValidate}
                         />
-                        {syncState && (
-                          <Inline space={2}>
-                            <Spinner muted />
-                            <Text size={1} muted>
-                              {syncState === "deleting" ? (
-                                <>Deleting…</>
-                              ) : (
-                                <>Saving…</>
-                              )}
-                            </Text>
-                          </Inline>
-                        )}
-                      </Inline>
+                      </Flex>
                     </Stack>
                   </form>
                 ) : (
                   <Box>Token not found: {tokenDocumentId}</Box>
                 ))}
               {params?.action === "new" && (
-                <form onSubmit={handleSave}>
+                <form onSubmit={handleSave} ref={formRef}>
                   <Stack space={4}>
                     <TokenForm action="create" />
                     <Inline space={3}>
@@ -330,15 +381,18 @@ export function CrossDatasetTokenUI(props: ToolProps) {
                         tone="primary"
                         disabled={Boolean(syncState)}
                       />
+                      <Button
+                        type="button"
+                        mode="ghost"
+                        text="Validate token"
+                        icon={PlayIcon}
+                        onClick={handleValidate}
+                      />
                       {syncState && (
                         <Inline space={2}>
                           <Spinner muted />
                           <Text size={1} muted>
-                            {syncState === "deleting" ? (
-                              <>Deleting…</>
-                            ) : (
-                              <>Saving…</>
-                            )}
+                            Creating…
                           </Text>
                         </Inline>
                       )}
