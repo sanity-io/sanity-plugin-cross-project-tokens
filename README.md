@@ -6,7 +6,7 @@ This Sanity plugin supports a convenient way to maintain cross project tokens.
 ## Install
 
 ```
-sanity plugin install cross-project-tokens
+sanity install cross-project-tokens
 ```
 
 ## Enable only in dev
