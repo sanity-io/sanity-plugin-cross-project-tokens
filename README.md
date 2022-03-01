@@ -6,7 +6,7 @@ This Sanity plugin supports a convenient way to maintain cross dataset tokens.
 ## Install
 
 ```
-sanity plugin install cross-dataset-tokens
+sanity install cross-dataset-tokens
 ```
 
 ## Enable only in dev
