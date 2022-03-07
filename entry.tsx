@@ -1,13 +1,12 @@
-import React, {useCallback, useMemo} from "react"
+import React, {useCallback} from "react"
 import ReactDOM from "react-dom"
 import {
-  Button,
   studioTheme,
   ThemeProvider,
   ToastProvider,
   useToast,
 } from "@sanity/ui"
-import {CrossDatasetTokenRoot} from "./src"
+import {CrossProjectTokensRoot} from "./src"
 import {RouterProvider, useRouterState} from "@sanity/base/router"
 import createClient from "@sanity/client"
 import {validateRouterState} from "./src/utils/validateRouterState"
@@ -56,7 +55,7 @@ function Demo() {
   )
 
   return (
-    <CrossDatasetTokenRoot
+    <CrossProjectTokensRoot
       client={client}
       navigate={navigateState}
       notify={notify}

@@ -61,7 +61,7 @@ function validateFormData(formData: Record<string, FormDataEntryValue>):
   }
 }
 
-interface ToolProps {
+interface RootProps {
   client: SanityClient
   navigate: (
     nextState:
@@ -73,15 +73,15 @@ interface ToolProps {
   params: null | {action: "edit"; tokenId: string} | {action: "new"}
 }
 
-export function CrossDatasetTokenRoot(props: ToolProps) {
+export function CrossProjectTokensRoot(props: RootProps) {
   return (
     <Box padding={2}>
-      <CrossDatasetTokenUI {...props} />
+      <CrossProjectTokensUI {...props} />
     </Box>
   )
 }
 
-export function CrossDatasetTokenUI(props: ToolProps) {
+export function CrossProjectTokensUI(props: RootProps) {
   const {client, navigate, notify, params} = props
 
   const [refreshCount, setRefreshCount] = useState(0)
@@ -212,7 +212,7 @@ export function CrossDatasetTokenUI(props: ToolProps) {
   return (
     <Stack>
       <Box paddingX={3} paddingY={4}>
-        <Heading as="h1">Cross dataset tokens</Heading>
+        <Heading as="h1">Cross project tokens</Heading>
       </Box>
 
       <Flex padding={2} gap={2}>
@@ -288,7 +288,7 @@ export function CrossDatasetTokenUI(props: ToolProps) {
                 <Box flex={1}>
                   <Heading as="h2" size={1}>
                     {params.action === "edit" ? <>Edit</> : <>Add new</>} cross
-                    dataset token
+                    project token
                   </Heading>
                 </Box>
                 <Box>

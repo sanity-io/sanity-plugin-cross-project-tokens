@@ -1,11 +1,11 @@
 import {TokenIcon} from "@sanity/icons"
-import {CrossDatasetTokenToolProvider} from "./CrossDatasetTokenToolProvider"
+import {CrossProjectTokensTool} from "./CrossProjectTokensTool"
 import {router} from "./router"
 
 export default {
-  name: "crossDatasetTokens",
-  title: "Cross dataset tokens",
-  component: CrossDatasetTokenToolProvider,
+  name: "crossProjectTokens",
+  title: "Cross project tokens",
+  component: CrossProjectTokensTool,
   router,
   icon: TokenIcon,
 }

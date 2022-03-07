@@ -1,12 +1,12 @@
-## Cross dataset tokens tool
+## Cross project tokens tool
 
-This Sanity plugin supports a convenient way to maintain cross dataset tokens.
+This Sanity plugin supports a convenient way to maintain cross project tokens.
 
 ![Screenshot](./screenshot.jpg)
 ## Install
 
 ```
-sanity plugin install cross-dataset-tokens
+sanity plugin install cross-project-tokens
 ```
 
 ## Enable only in dev
@@ -17,7 +17,7 @@ To enable this plugin only locally, configure the [Environments'](https://www.sa
 "env": {
   "development": {
     "plugins": [
-      "cross-dataset-tokens"
+      "cross-project-tokens"
       //...
     ]
   }

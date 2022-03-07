@@ -8,7 +8,7 @@ const TOKEN_PATH = `secrets.sanity.sharedContent`
 export function fromDocumentId(documentId: string): Token {
   if (!documentId.startsWith(TOKEN_PATH)) {
     throw new Error(
-      "Unexpected document id. The _id of cross dataset token documents should begin with `secrets.sanity.sharedContent`",
+      "Unexpected document id. The `_id` of a cross project token document should begin with `secrets.sanity.sharedContent`",
     )
   }
   const [, , , projectId, tokenId] = documentId.split(".")

@@ -16,7 +16,7 @@ export type TokenDocumentAttributes = Omit<
 
 export function getAllTokens(client: SanityClient): Promise<TokenDocument[]> {
   return client.fetch(
-    `*[_type == 'crossDatasetToken' && _id in path('secrets.sanity.sharedContent.**')]`,
+    `*[_type == 'crossProjectToken' && _id in path('secrets.sanity.sharedContent.**')]`,
   )
 }
 
@@ -43,7 +43,7 @@ export async function saveToken(
 ): Promise<unknown> {
   const tr = client
     .transaction()
-    .createIfNotExists({_id: id, _type: "crossDatasetToken"})
+    .createIfNotExists({_id: id, _type: "crossProjectToken"})
     .patch(id, p => p.set(attributes))
 
   return tr.commit()
