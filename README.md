@@ -2,7 +2,7 @@
 
 This Sanity plugin supports a convenient way to maintain cross project tokens.
 
-![Screenshot](./screenshot.jpg)
+![Screenshot](screenshot.jpg)
 ## Install
 
 ```
